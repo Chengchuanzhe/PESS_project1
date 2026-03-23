@@ -1,0 +1,7 @@
+everybit
+*.o
+*.gcov
+*.gcno
+*.gcda
+buildmode
+.DS_Store
