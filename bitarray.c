@@ -21,15 +21,19 @@
  **/
 
 // Implements the ADT specified in bitarray.h as a packed array of bits; a bit
-// array containing bit_sz bits will consume roughly bit_sz/8 bytes of memory.
+// array containing bit_sz bits will consume roughly bit_sz/8 bytes of
+// memory.
+
 
 #include "./bitarray.h"
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include <sys/types.h>
+
 
 // ********************************* Types **********************************
 
@@ -39,10 +43,11 @@ struct bitarray {
   // Need not be divisible by 8.
   size_t bit_sz;
 
-  // The underlying memory buffer that stores the bits in packed form
-  // (8 per byte).
+  // The underlying memory buffer that stores the bits in
+  // packed form (8 per byte).
   char* buf;
 };
+
 
 // ******************** Prototypes for static functions *********************
 
@@ -61,6 +66,8 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
                                  const size_t bit_length,
                                  const size_t bit_left_amount);
 
+
+
 // Reverses a subarray of bits in place.
 static void bitarray_reverse_subarray(bitarray_t* const bitarray,
                                       const size_t bit_offset,
@@ -71,9 +78,9 @@ static void bitarray_reverse_subarray(bitarray_t* const bitarray,
 // Many programming languages define modulo in a manner incompatible with its
 // widely-accepted mathematical definition.
 // http://stackoverflow.com/questions/1907565/c-python-different-behaviour-of-the-modulo-operation
-// provides details; in particular, C's modulo operator (which the standard
-// calls a "remainder" operator) yields a result signed identically to the
-// dividend e.g., -1 % 10 yields -1.
+// provides details; in particular, C's modulo
+// operator (which the standard calls a "remainder" operator) yields a result
+// signed identically to the dividend e.g., -1 % 10 yields -1.
 // This is obviously unacceptable for a function which returns size_t, so we
 // define our own.
 //
@@ -83,23 +90,25 @@ static void bitarray_reverse_subarray(bitarray_t* const bitarray,
 // 0 <= r < m.
 static size_t modulo(const ssize_t n, const size_t m);
 
-// Produces a mask which, when ANDed with a byte, retains only the bit_index th
-// byte.
+// Produces a mask which, when ANDed with a byte, retains only the
+// bit_index th byte.
 //
 // Example: bitmask(5) produces the byte 0b00100000.
 //
-// (Note that here the index is counted from right to left, which is different
-// from how we represent bitarrays in the tests. This function is only used by
-// bitarray_get and bitarray_set, however, so as long as you always use
-// bitarray_get and bitarray_set to access bits in your bitarray, this reverse
-// representation should not matter.
+// (Note that here the index is counted from right
+// to left, which is different from how we represent bitarrays in the
+// tests.  This function is only used by bitarray_get and bitarray_set,
+// however, so as long as you always use bitarray_get and bitarray_set
+// to access bits in your bitarray, this reverse representation should
+// not matter.
 static char bitmask(const size_t bit_index);
+
 
 // ******************************* Functions ********************************
 
 bitarray_t* bitarray_new(const size_t bit_sz) {
   // Allocate an underlying buffer of ceil(bit_sz/8) bytes.
-  char* const buf = calloc(1, (bit_sz + 7) / 8);
+  char* const buf = calloc(1, ((bit_sz + 63) / 64) * 8);
   if (buf == NULL) {
     return NULL;
   }
@@ -132,9 +141,16 @@ size_t bitarray_get_bit_sz(const bitarray_t* const bitarray) {
 bool bitarray_get(const bitarray_t* const bitarray, const size_t bit_index) {
   assert(bit_index < bitarray->bit_sz);
 
-  // We're storing bits in packed form, 8 per byte. So to get the nth bit, we
-  // want to look at the (n mod 8)th bit of the (floor(n/8)th) byte.
-  return (bitarray->buf[bit_index / 8] & bitmask(bit_index)) ? true : false;
+  // We're storing bits in packed form, 8 per byte.  So to get the nth
+  // bit, we want to look at the (n mod 8)th bit of the (floor(n/8)th)
+  // byte.
+  //
+  // In C, integer division is floored explicitly, so we can just do it to
+  // get the byte; we then bitwise-and the byte with an appropriate mask
+  // to produce either a zero byte (if the bit was 0) or a nonzero byte
+  // (if it wasn't).  Finally, we convert that to a boolean.
+  return (bitarray->buf[bit_index / 8] & bitmask(bit_index)) ?
+         true : false;
 }
 
 void bitarray_set(bitarray_t* const bitarray,
@@ -142,16 +158,21 @@ void bitarray_set(bitarray_t* const bitarray,
                   const bool value) {
   assert(bit_index < bitarray->bit_sz);
 
-  // We're storing bits in packed form, 8 per byte. So to set the nth bit, we
-  // want to set the (n mod 8)th bit of the (floor(n/8)th) byte.
+  // We're storing bits in packed form, 8 per byte.  So to set the nth
+  // bit, we want to set the (n mod 8)th bit of the (floor(n/8)th) byte.
+  //
+  // In C, integer division is floored explicitly, so we can just do it to
+  // get the byte; we then bitwise-and the byte with an appropriate mask
+  // to clear out the bit we're about to set.  We bitwise-or the result
+  // with a byte that has either a 1 or a 0 in the correct place.
   bitarray->buf[bit_index / 8] =
-      (bitarray->buf[bit_index / 8] & ~bitmask(bit_index)) |
-      (value ? bitmask(bit_index) : 0);
+    (bitarray->buf[bit_index / 8] & ~bitmask(bit_index)) |
+    (value ? bitmask(bit_index) : 0);
 }
 
-void bitarray_randfill(bitarray_t* const bitarray) {
-  int32_t* ptr = (int32_t*)bitarray->buf;
-  for (int64_t i = 0; i < bitarray->bit_sz / 32 + 1; i++) {
+void bitarray_randfill(bitarray_t* const bitarray){
+  int32_t *ptr = (int32_t *)bitarray->buf;
+  for (int64_t i=0; i<bitarray->bit_sz/32 + 1; i++){
     ptr[i] = rand();
   }
 }
@@ -162,18 +183,14 @@ void bitarray_rotate(bitarray_t* const bitarray,
                      const ssize_t bit_right_amount) {
   assert(bit_offset + bit_length <= bitarray->bit_sz);
 
-  if (bit_length <= 1) {
+  if (bit_length == 0) {
     return;
   }
 
   // Convert a rotate left or right to a left rotate only, and eliminate
-  // multiple full rotations before dispatching to the core left-rotate path.
-  const size_t bit_left_amount = modulo(-bit_right_amount, bit_length);
-  if (bit_left_amount == 0) {
-    return;
-  }
-
-  bitarray_rotate_left(bitarray, bit_offset, bit_length, bit_left_amount);
+  // multiple full rotations.
+  bitarray_rotate_left(bitarray, bit_offset, bit_length,
+                       modulo(-bit_right_amount, bit_length));
 }
 
 static void bitarray_rotate_left(bitarray_t* const bitarray,
@@ -184,34 +201,79 @@ static void bitarray_rotate_left(bitarray_t* const bitarray,
     return;
   }
 
-  // Left-rotating [A B] by |A| bits can be done in place with three reversals:
-  // reverse(A), reverse(B), reverse(AB) => [B A].
   bitarray_reverse_subarray(bitarray, bit_offset, bit_left_amount);
   bitarray_reverse_subarray(bitarray, bit_offset + bit_left_amount,
                             bit_length - bit_left_amount);
   bitarray_reverse_subarray(bitarray, bit_offset, bit_length);
 }
 
+
+static inline uint64_t reverse_bits_64(uint64_t x) {
+    x = ((x & 0x5555555555555555ULL) << 1) | ((x >> 1) & 0x5555555555555555ULL);
+    x = ((x & 0x3333333333333333ULL) << 2) | ((x >> 2) & 0x3333333333333333ULL);
+    x = ((x & 0x0F0F0F0F0F0F0F0FULL) << 4) | ((x >> 4) & 0x0F0F0F0F0F0F0F0FULL);
+    return __builtin_bswap64(x); 
+}
+
 static void bitarray_reverse_subarray(bitarray_t* const bitarray,
                                       const size_t bit_offset,
                                       const size_t bit_length) {
-  if (bit_length <= 1) {
-    return;
-  }
+    if (bit_length <= 1) return;
 
-  size_t left = bit_offset;
-  size_t right = bit_offset + bit_length - 1;
+    size_t left = bit_offset;
+    size_t right = bit_offset + bit_length - 1;
+    uint64_t* buf = (uint64_t*)bitarray->buf;
 
-  while (left < right) {
-    const bool left_bit = bitarray_get(bitarray, left);
-    const bool right_bit = bitarray_get(bitarray, right);
+    while (left < right && (left & 63) != 0) {
+        size_t l_word = left >> 6;
+        size_t r_word = right >> 6;
+        uint64_t diff = ((buf[l_word] >> (left & 63)) ^ (buf[r_word] >> (right & 63))) & 1;
+        buf[l_word] ^= (diff << (left & 63));
+        buf[r_word] ^= (diff << (right & 63));
+        left++;
+        right--;
+    }
 
-    bitarray_set(bitarray, left, right_bit);
-    bitarray_set(bitarray, right, left_bit);
+    if (left + 128 <= right) {
+        size_t r_shift = (right - 63) & 63;
+        uint64_t r_lower_mask = (1ULL << r_shift) - 1;
+        uint64_t r_upper_mask = ~r_lower_mask;
 
-    left++;
-    right--;
-  }
+        while (left + 128 <= right) {
+            size_t l_word = left >> 6;
+            size_t r_word = (right - 63) >> 6;
+
+            uint64_t l_val = buf[l_word];
+
+            uint64_t r_val = (r_shift == 0) ? buf[r_word] :
+                             (buf[r_word] >> r_shift) | (buf[r_word + 1] << (64 - r_shift));
+
+            uint64_t rev_l = reverse_bits_64(l_val);
+            uint64_t rev_r = reverse_bits_64(r_val);
+
+            buf[l_word] = rev_r;
+
+            if (r_shift == 0) {
+                buf[r_word] = rev_l;
+            } else {
+                buf[r_word] = (buf[r_word] & r_lower_mask) | (rev_l << r_shift);
+                buf[r_word + 1] = (buf[r_word + 1] & r_upper_mask) | (rev_l >> (64 - r_shift));
+            }
+
+            left += 64;
+            right -= 64;
+        }
+    }
+
+    while (left < right) {
+        size_t l_word = left >> 6;
+        size_t r_word = right >> 6;
+        uint64_t diff = ((buf[l_word] >> (left & 63)) ^ (buf[r_word] >> (right & 63))) & 1;
+        buf[l_word] ^= (diff << (left & 63));
+        buf[r_word] ^= (diff << (right & 63));
+        left++;
+        right--;
+    }
 }
 
 static size_t modulo(const ssize_t n, const size_t m) {
@@ -225,3 +287,4 @@ static size_t modulo(const ssize_t n, const size_t m) {
 static char bitmask(const size_t bit_index) {
   return 1 << (bit_index % 8);
 }
+
